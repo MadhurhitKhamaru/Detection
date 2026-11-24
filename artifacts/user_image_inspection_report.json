@@ -1,0 +1,356 @@
+[
+  {
+    "file": "3e5b8c21-c43e-4105-8235-0e2104c259c0.webp",
+    "has_defect": true,
+    "defect_type": "rolled_in_scale",
+    "confidence": 0.9976,
+    "severity": "High",
+    "decision": "REJECT",
+    "recommendation": "Reject. Scale entrapped in substrate will delaminate during fabrication. Inspect descaler nozzles.",
+    "num_boxes": 4,
+    "boxes": [
+      {
+        "class_name": "rolled_in_scale",
+        "confidence": 0.9976,
+        "xyxy": [
+          535,
+          538,
+          997,
+          995
+        ]
+      },
+      {
+        "class_name": "rolled_in_scale",
+        "confidence": 0.9855,
+        "xyxy": [
+          27,
+          20,
+          484,
+          487
+        ]
+      },
+      {
+        "class_name": "patches",
+        "confidence": 0.9667,
+        "xyxy": [
+          537,
+          31,
+          993,
+          485
+        ]
+      },
+      {
+        "class_name": "pitted_surface",
+        "confidence": 0.9603,
+        "xyxy": [
+          27,
+          533,
+          506,
+          991
+        ]
+      }
+    ],
+    "inference_time_ms": 1849.33
+  },
+  {
+    "file": "5f7a944e-6f9c-48b3-b906-151bc9a12e6a.webp",
+    "has_defect": true,
+    "defect_type": "scratches",
+    "confidence": 0.9268,
+    "severity": "High",
+    "decision": "REJECT",
+    "recommendation": "Inspect surface scratch depth. If micrometer depth < 0.05mm, allow rework, otherwise reject.",
+    "num_boxes": 2,
+    "boxes": [
+      {
+        "class_name": "scratches",
+        "confidence": 0.9268,
+        "xyxy": [
+          539,
+          543,
+          1024,
+          1021
+        ]
+      },
+      {
+        "class_name": "crazing",
+        "confidence": 0.7567,
+        "xyxy": [
+          10,
+          564,
+          477,
+          1017
+        ]
+      }
+    ],
+    "inference_time_ms": 52.91
+  },
+  {
+    "file": "bf117ac0-37fb-4997-9fe8-fbfe5b274f54.webp",
+    "has_defect": true,
+    "defect_type": "pitted_surface",
+    "confidence": 0.981,
+    "severity": "High",
+    "decision": "REJECT",
+    "recommendation": "Reject component. Pitting exceeds gauge tolerance. Check pickling line acid concentration.",
+    "num_boxes": 5,
+    "boxes": [
+      {
+        "class_name": "pitted_surface",
+        "confidence": 0.981,
+        "xyxy": [
+          528,
+          534,
+          998,
+          993
+        ]
+      },
+      {
+        "class_name": "patches",
+        "confidence": 0.9758,
+        "xyxy": [
+          23,
+          530,
+          494,
+          999
+        ]
+      },
+      {
+        "class_name": "inclusion",
+        "confidence": 0.705,
+        "xyxy": [
+          537,
+          17,
+          989,
+          491
+        ]
+      },
+      {
+        "class_name": "pitted_surface",
+        "confidence": 0.6629,
+        "xyxy": [
+          538,
+          12,
+          977,
+          476
+        ]
+      },
+      {
+        "class_name": "patches",
+        "confidence": 0.4324,
+        "xyxy": [
+          15,
+          29,
+          496,
+          481
+        ]
+      }
+    ],
+    "inference_time_ms": 53.88
+  },
+  {
+    "file": "Screenshot 2026-11-21 190228 - Copy.png",
+    "has_defect": true,
+    "defect_type": "crazing",
+    "confidence": 0.8229,
+    "severity": "Critical",
+    "decision": "REJECT",
+    "recommendation": "Immediate reject. Quarantine coil segment to prevent catastrophic tensile failure during stamping.",
+    "num_boxes": 1,
+    "boxes": [
+      {
+        "class_name": "crazing",
+        "confidence": 0.8229,
+        "xyxy": [
+          18,
+          61,
+          221,
+          333
+        ]
+      }
+    ],
+    "inference_time_ms": 62.02
+  },
+  {
+    "file": "Screenshot 2026-11-21 190228.png",
+    "has_defect": true,
+    "defect_type": "crazing",
+    "confidence": 0.8229,
+    "severity": "Critical",
+    "decision": "REJECT",
+    "recommendation": "Immediate reject. Quarantine coil segment to prevent catastrophic tensile failure during stamping.",
+    "num_boxes": 1,
+    "boxes": [
+      {
+        "class_name": "crazing",
+        "confidence": 0.8229,
+        "xyxy": [
+          18,
+          61,
+          221,
+          333
+        ]
+      }
+    ],
+    "inference_time_ms": 39.93
+  },
+  {
+    "file": "Screenshot 2026-11-21 190302 - Copy.png",
+    "has_defect": true,
+    "defect_type": "scratches",
+    "confidence": 0.8647,
+    "severity": "High",
+    "decision": "REJECT",
+    "recommendation": "Inspect surface scratch depth. If micrometer depth < 0.05mm, allow rework, otherwise reject.",
+    "num_boxes": 2,
+    "boxes": [
+      {
+        "class_name": "scratches",
+        "confidence": 0.8647,
+        "xyxy": [
+          13,
+          13,
+          233,
+          340
+        ]
+      },
+      {
+        "class_name": "inclusion",
+        "confidence": 0.2683,
+        "xyxy": [
+          11,
+          12,
+          230,
+          344
+        ]
+      }
+    ],
+    "inference_time_ms": 41.41
+  },
+  {
+    "file": "Screenshot 2026-11-21 190302.png",
+    "has_defect": true,
+    "defect_type": "scratches",
+    "confidence": 0.8647,
+    "severity": "High",
+    "decision": "REJECT",
+    "recommendation": "Inspect surface scratch depth. If micrometer depth < 0.05mm, allow rework, otherwise reject.",
+    "num_boxes": 2,
+    "boxes": [
+      {
+        "class_name": "scratches",
+        "confidence": 0.8647,
+        "xyxy": [
+          13,
+          13,
+          233,
+          340
+        ]
+      },
+      {
+        "class_name": "inclusion",
+        "confidence": 0.2683,
+        "xyxy": [
+          11,
+          12,
+          230,
+          344
+        ]
+      }
+    ],
+    "inference_time_ms": 40.87
+  },
+  {
+    "file": "Screenshot 2026-11-21 190321 - Copy.png",
+    "has_defect": false,
+    "defect_type": "normal",
+    "confidence": 0.99,
+    "severity": "None",
+    "decision": "ACCEPT",
+    "recommendation": "Surface passes ASTM A1008 steel standards. Release coil to downstream slitting line.",
+    "num_boxes": 0,
+    "boxes": [],
+    "inference_time_ms": 41.11
+  },
+  {
+    "file": "Screenshot 2026-11-21 190321.png",
+    "has_defect": false,
+    "defect_type": "normal",
+    "confidence": 0.99,
+    "severity": "None",
+    "decision": "ACCEPT",
+    "recommendation": "Surface passes ASTM A1008 steel standards. Release coil to downstream slitting line.",
+    "num_boxes": 0,
+    "boxes": [],
+    "inference_time_ms": 41.04
+  },
+  {
+    "file": "Screenshot 2026-11-21 190930 - Copy.png",
+    "has_defect": false,
+    "defect_type": "normal",
+    "confidence": 0.99,
+    "severity": "None",
+    "decision": "ACCEPT",
+    "recommendation": "Surface passes ASTM A1008 steel standards. Release coil to downstream slitting line.",
+    "num_boxes": 0,
+    "boxes": [],
+    "inference_time_ms": 64.35
+  },
+  {
+    "file": "Screenshot 2026-11-21 190930.png",
+    "has_defect": false,
+    "defect_type": "normal",
+    "confidence": 0.99,
+    "severity": "None",
+    "decision": "ACCEPT",
+    "recommendation": "Surface passes ASTM A1008 steel standards. Release coil to downstream slitting line.",
+    "num_boxes": 0,
+    "boxes": [],
+    "inference_time_ms": 46.3
+  },
+  {
+    "file": "Screenshot 2026-11-21 191702.png",
+    "has_defect": false,
+    "defect_type": "normal",
+    "confidence": 0.99,
+    "severity": "None",
+    "decision": "ACCEPT",
+    "recommendation": "Surface passes ASTM A1008 steel standards. Release coil to downstream slitting line.",
+    "num_boxes": 0,
+    "boxes": [],
+    "inference_time_ms": 56.46
+  },
+  {
+    "file": "WhatsApp Image 2026-11-24 at 1.06.26 PM.jpeg",
+    "has_defect": true,
+    "defect_type": "crazing",
+    "confidence": 0.5939,
+    "severity": "Indeterminate",
+    "decision": "MANUAL_REVIEW",
+    "recommendation": "Confidence (59.4%) is below 65% threshold. Hold product for manual operator verification.",
+    "num_boxes": 2,
+    "boxes": [
+      {
+        "class_name": "crazing",
+        "confidence": 0.5939,
+        "xyxy": [
+          132,
+          84,
+          416,
+          359
+        ]
+      },
+      {
+        "class_name": "scratches",
+        "confidence": 0.3896,
+        "xyxy": [
+          114,
+          105,
+          277,
+          179
+        ]
+      }
+    ],
+    "inference_time_ms": 61.42
+  }
+]

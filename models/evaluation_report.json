@@ -12,7 +12,7 @@
       "normal"
     ],
     "test_sample_count": 70,
-    "timestamp": "2026-11-03T12:46:27Z"
+    "timestamp": "2026-11-24T02:46:32Z"
   },
   "summary_metrics": {
     "macro_precision": 0.9179,
@@ -179,16 +179,16 @@
   },
   "edge_performance_benchmark": {
     "environment": "Linux Arm64 / Raspberry Pi 5 emulation",
-    "model_size_mb": 0.0,
+    "model_size_mb": 21.48,
     "estimated_ram_usage_mb": 185.0,
     "measured_latency": {
       "iterations": 40,
-      "mean_latency_ms": 0.01,
-      "median_latency_ms": 0.01,
-      "p95_latency_ms": 0.02,
-      "min_latency_ms": 0.01,
-      "max_latency_ms": 0.05,
-      "fps_throughput": 133361.8
+      "mean_latency_ms": 131.14,
+      "median_latency_ms": 130.83,
+      "p95_latency_ms": 139.57,
+      "min_latency_ms": 126.43,
+      "max_latency_ms": 147.15,
+      "fps_throughput": 7.6
     }
   }
 }

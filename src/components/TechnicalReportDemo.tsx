@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Award,
@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Sparkles
 } from 'lucide-react';
+import { api } from '../services/api';
 
 interface RubricItem {
   id: string;
@@ -195,14 +196,53 @@ Comprehensive benchmarking over 200 continuous frames revealed:
 ### VII. Conclusion & Challenge Compliance
 QualiEdge fulfills all technical mandates of the Bharat AI SoC Challenge 2026–27 by demonstrating that high-precision deep vision and generative LLM reasoning can co-exist stably on edge hardware at production line speeds.`;
 
+  const [rubrics, setRubrics] = useState<RubricItem[]>(RUBRICS);
+  const [demoScenes, setDemoScenes] = useState(DEMO_SCENES);
+  const [paperText, setPaperText] = useState<string>(IEEE_PAPER_TEXT);
+
+  useEffect(() => {
+    api.getDefenseChecklist()
+      .then((data) => {
+        if (data && data.rubrics) {
+          setRubrics(data.rubrics);
+        }
+      })
+      .catch(() => {});
+
+    api.getVideoDemoScript()
+      .then((data) => {
+        if (data && data.scenes) {
+          setDemoScenes(
+            data.scenes.map((s: any) => ({
+              sceneNumber: s.scene_number ?? s.sceneNumber,
+              timestamp: s.timestamp,
+              title: s.title,
+              visualCue: s.visual_cue ?? s.visualCue,
+              speakerNotes: s.speaker_notes ?? s.speakerNotes,
+              keyMetric: s.key_metric ?? s.keyMetric
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+
+    api.getIeeePaper()
+      .then((data) => {
+        if (data && data.full_text) {
+          setPaperText(data.full_text);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleCopyPaper = () => {
-    navigator.clipboard.writeText(IEEE_PAPER_TEXT);
+    navigator.clipboard.writeText(paperText);
     setCopiedPaper(true);
     setTimeout(() => setCopiedPaper(false), 2000);
   };
 
   const handleDownloadPaper = () => {
-    const blob = new Blob([IEEE_PAPER_TEXT], { type: 'text/markdown' });
+    const blob = new Blob([paperText], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -212,13 +252,13 @@ QualiEdge fulfills all technical mandates of the Bharat AI SoC Challenge 2026–
   };
 
   const handleCopyScript = () => {
-    const scriptText = DEMO_SCENES.map(s => `[SCENE ${s.sceneNumber}: ${s.title} (${s.timestamp})]\nVISUAL: ${s.visualCue}\nSPEAKER: ${s.speakerNotes}\nMETRIC: ${s.keyMetric}\n`).join('\n');
+    const scriptText = demoScenes.map(s => `[SCENE ${s.sceneNumber}: ${s.title} (${s.timestamp})]\nVISUAL: ${s.visualCue}\nSPEAKER: ${s.speakerNotes}\nMETRIC: ${s.keyMetric}\n`).join('\n');
     navigator.clipboard.writeText(scriptText);
     setCopiedScript(true);
     setTimeout(() => setCopiedScript(false), 2000);
   };
 
-  const totalScore = RUBRICS.reduce((acc, r) => acc + r.score, 0);
+  const totalScore = rubrics.reduce((acc, r) => acc + r.score, 0);
 
   return (
     <div className="space-y-6">
@@ -466,7 +506,7 @@ QualiEdge fulfills all technical mandates of the Bharat AI SoC Challenge 2026–
 
             {/* Rubrics Grid */}
             <div className="space-y-3">
-              {RUBRICS.map((rubric) => (
+              {rubrics.map((rubric) => (
                 <div key={rubric.id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-xs">
                     <div className="flex items-center gap-2">
@@ -538,7 +578,7 @@ QualiEdge fulfills all technical mandates of the Bharat AI SoC Challenge 2026–
 
             {/* Scene Cards */}
             <div className="space-y-3">
-              {DEMO_SCENES.map((scene, idx) => (
+              {demoScenes.map((scene, idx) => (
                 <div
                   key={idx}
                   className={`p-4 rounded-lg border transition ${

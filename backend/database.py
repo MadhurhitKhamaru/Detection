@@ -15,6 +15,7 @@ import io
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
+from contextlib import contextmanager
 
 DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "qualiedge.db"
 
@@ -29,14 +30,31 @@ class QualiEdgeDatabase:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Create a connection with WAL mode and foreign keys enabled."""
+    @contextmanager
+    def _get_connection(self):
+        """Create a connection with WAL mode and foreign keys enabled, ensuring clean closure on exit."""
         conn = sqlite3.connect(self.db_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
-        return conn
+        try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA foreign_keys = ON;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+            yield conn
+        finally:
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            conn.close()
+
+    def close(self):
+        """Checkpoints WAL and releases all database locks."""
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=5.0)
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.close()
+        except Exception:
+            pass
 
     def _init_db(self):
         """Initializes database schema with indexes and constraints."""

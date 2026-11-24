@@ -55,7 +55,12 @@ class TestBackendAPI(unittest.TestCase):
         self.db = QualiEdgeDatabase(db_path=self.db_path)
 
     def tearDown(self):
-        self.temp_dir.cleanup()
+        if hasattr(self, "db") and self.db:
+            self.db.close()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
 
     def test_database_initialization(self):
         """Verify schema tables, indexes, and WAL configuration."""
@@ -287,6 +292,49 @@ class TestBackendAPI(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["status"], "success")
         self.assertGreater(body["log_id"], 0)
+
+        # 7. DB Maintenance & Vacuum
+        status, body = InspectionService.dispatch_request("GET", "/api/db/maintenance")
+        self.assertEqual(status, 200)
+        self.assertIn("db_size_kb", body)
+        self.assertEqual(body["journal_mode"], "WAL")
+
+        status, body = InspectionService.dispatch_request("POST", "/api/db/vacuum")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["status"], "SUCCESS")
+
+        # 8. Benchmark Endpoints
+        status, body = InspectionService.dispatch_request("POST", "/api/benchmark/run", body={
+            "num_frames": 5, "target_device": "rpi5_hailo"
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(body["status"], "success")
+        self.assertIn("throughput", body)
+
+        status, body = InspectionService.dispatch_request("POST", "/api/benchmark/stress-test", body={
+            "num_iterations": 10, "target_device": "rpi5_hailo"
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(body["status"], "completed")
+
+        # 9. Deployment Verification
+        status, body = InspectionService.dispatch_request("GET", "/api/deployment/verification")
+        self.assertEqual(status, 200)
+        self.assertTrue(body["all_passed"])
+        self.assertIn("checklist", body)
+
+        # 10. Technical Reports (IEEE paper, defense checklist, demo script)
+        status, body = InspectionService.dispatch_request("GET", "/api/reports/ieee-paper")
+        self.assertEqual(status, 200)
+        self.assertIn("metadata", body)
+
+        status, body = InspectionService.dispatch_request("GET", "/api/reports/defense-checklist")
+        self.assertEqual(status, 200)
+        self.assertIn("rubrics", body)
+
+        status, body = InspectionService.dispatch_request("GET", "/api/reports/demo-script")
+        self.assertEqual(status, 200)
+        self.assertIn("scenes", body)
 
 
 if __name__ == "__main__":

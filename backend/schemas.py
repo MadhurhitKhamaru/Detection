@@ -55,39 +55,113 @@ class InspectionDecision(str, Enum):
     REJECT = "REJECT"
     MANUAL_REVIEW = "MANUAL_REVIEW"
 
-class DefectBoxDetail(BaseModel):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+if HAS_PYDANTIC:
+    class DefectBoxDetail(BaseModel):
+        class_id: Optional[int] = None
+        class_name: Optional[str] = None
+        confidence: Optional[float] = None
+        xc: Optional[float] = None
+        yc: Optional[float] = None
+        w: Optional[float] = None
+        h: Optional[float] = None
+        x1: Optional[int] = None
+        y1: Optional[int] = None
+        x2: Optional[int] = None
+        y2: Optional[int] = None
+        area_ratio: Optional[float] = None
+        xmin: Optional[float] = None
+        ymin: Optional[float] = None
+        xmax: Optional[float] = None
+        ymax: Optional[float] = None
+        severity: Optional[str] = None
 
-class StructuredInspectionRecord(BaseModel):
-    """
-    Mandatory Section 7 Inspection Payload.
-    Used for SQLite persistence, REST endpoints, and Local Llama ExecuTorch context.
-    """
-    def __init__(
-        self,
-        inspection_id: str,
-        product_id: str,
-        defect_detected: bool,
-        defect_type: str,
-        severity: SeverityLevel,
-        confidence: float,
-        location: str,
-        decision: InspectionDecision,
-        recommendation: str,
-        timestamp: Optional[str] = None,
-        inference_ms: Optional[float] = None,
-        boxes: Optional[List[DefectBoxDetail]] = None
-    ):
-        self.inspection_id = inspection_id
-        self.product_id = product_id
-        self.defect_detected = defect_detected
-        self.defect_type = defect_type
-        self.severity = severity
-        self.confidence = round(float(confidence), 4)
-        self.location = location
-        self.decision = decision
-        self.recommendation = recommendation
-        self.timestamp = timestamp or datetime.now(timezone.utc).isoformat()
-        self.inference_ms = inference_ms
-        self.boxes = boxes or []
+        model_config = {"extra": "allow"}
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+    class StructuredInspectionRecord(BaseModel):
+        """
+        Mandatory Section 7 Inspection Payload.
+        Used for SQLite persistence, REST endpoints, and Local Llama ExecuTorch context.
+        """
+        inspection_id: str
+        product_id: str
+        defect_detected: bool
+        defect_type: str
+        severity: SeverityLevel
+        confidence: float
+        location: str
+        decision: InspectionDecision
+        recommendation: str
+        timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+        inference_ms: Optional[float] = None
+        boxes: List[DefectBoxDetail] = Field(default_factory=list)
+
+        model_config = {"extra": "allow"}
+
+        def __init__(
+            self,
+            inspection_id: Optional[str] = None,
+            product_id: Optional[str] = None,
+            defect_detected: Optional[bool] = None,
+            defect_type: Optional[str] = None,
+            severity: Optional[SeverityLevel] = None,
+            confidence: Optional[float] = None,
+            location: Optional[str] = None,
+            decision: Optional[InspectionDecision] = None,
+            recommendation: Optional[str] = None,
+            timestamp: Optional[str] = None,
+            inference_ms: Optional[float] = None,
+            boxes: Optional[List[DefectBoxDetail]] = None,
+            **kwargs
+        ):
+            data = {}
+            if inspection_id is not None: data["inspection_id"] = inspection_id
+            if product_id is not None: data["product_id"] = product_id
+            if defect_detected is not None: data["defect_detected"] = defect_detected
+            if defect_type is not None: data["defect_type"] = defect_type
+            if severity is not None: data["severity"] = severity
+            if confidence is not None: data["confidence"] = round(float(confidence), 4)
+            if location is not None: data["location"] = location
+            if decision is not None: data["decision"] = decision
+            if recommendation is not None: data["recommendation"] = recommendation
+            if timestamp is not None: data["timestamp"] = timestamp
+            if inference_ms is not None: data["inference_ms"] = inference_ms
+            if boxes is not None: data["boxes"] = boxes
+            data.update(kwargs)
+            super().__init__(**data)
+
+else:
+    class DefectBoxDetail(BaseModel):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+
+    class StructuredInspectionRecord(BaseModel):
+        def __init__(
+            self,
+            inspection_id: str,
+            product_id: str,
+            defect_detected: bool,
+            defect_type: str,
+            severity: SeverityLevel,
+            confidence: float,
+            location: str,
+            decision: InspectionDecision,
+            recommendation: str,
+            timestamp: Optional[str] = None,
+            inference_ms: Optional[float] = None,
+            boxes: Optional[List[DefectBoxDetail]] = None
+        ):
+            self.inspection_id = inspection_id
+            self.product_id = product_id
+            self.defect_detected = defect_detected
+            self.defect_type = defect_type
+            self.severity = severity
+            self.confidence = round(float(confidence), 4)
+            self.location = location
+            self.decision = decision
+            self.recommendation = recommendation
+            self.timestamp = timestamp or datetime.now(timezone.utc).isoformat()
+            self.inference_ms = inference_ms
+            self.boxes = boxes or []

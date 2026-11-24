@@ -56,6 +56,10 @@ class DetectionResult:
     input_shape: Tuple[int, int]
     timestamp: float
 
+    @property
+    def defect_type(self) -> str:
+        return self.primary_defect
+
 class SteelDefectDetector:
     """
     Inference wrapper for edge steel defect inspection.
@@ -63,10 +67,18 @@ class SteelDefectDetector:
     def __init__(
         self,
         model_path: Optional[str] = None,
-        conf_thresh: float = 0.50,
+        conf_thresh: float = 0.25,
         iou_thresh: float = 0.45,
         device: str = "cpu"
     ):
+        if model_path is None:
+            default_pt = Path(__file__).parent.parent / "models" / "checkpoints" / "neu_yolov8n_run" / "weights" / "best.pt"
+            default_onnx = Path(__file__).parent.parent / "models" / "exported" / "neu_yolov8n_edge.onnx"
+            if default_pt.exists() and default_pt.stat().st_size > 1000:
+                model_path = str(default_pt)
+            elif default_onnx.exists() and default_onnx.stat().st_size > 1000:
+                model_path = str(default_onnx)
+
         self.model_path = model_path
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
@@ -79,6 +91,17 @@ class SteelDefectDetector:
     def _initialize_backend(self):
         """Attempt to load real PyTorch/ONNX model or configure fallback engine."""
         if self.model_path and Path(self.model_path).exists():
+            # If model is ONNX, prioritize ONNX Runtime
+            if str(self.model_path).endswith(".onnx"):
+                try:
+                    import onnxruntime as ort
+                    self.model = ort.InferenceSession(self.model_path)
+                    self.backend = "onnxruntime"
+                    print(f"[INFO] Loaded ONNX session from {self.model_path}")
+                    return
+                except Exception as e:
+                    print(f"[WARN] ONNX Runtime load failed ({e}).")
+
             # Check for Ultralytics YOLO
             try:
                 from ultralytics import YOLO
@@ -89,7 +112,7 @@ class SteelDefectDetector:
             except Exception as e:
                 print(f"[WARN] Ultralytics load failed ({e}). Checking ONNX Runtime...")
 
-            # Check for ONNX Runtime
+            # Fallback to ONNX Runtime
             try:
                 import onnxruntime as ort
                 self.model = ort.InferenceSession(self.model_path)
@@ -119,7 +142,7 @@ class SteelDefectDetector:
         t_infer_start = time.perf_counter()
         boxes: List[DetectionBox] = []
 
-        if self.backend == "ultralytics_yolo" and self.model is not None:
+        if self.backend == "ultralytics_yolo" and self.model is not None and img_array is not None:
             results = self.model.predict(
                 img_array,
                 conf=conf_limit,
@@ -152,7 +175,58 @@ class SteelDefectDetector:
                             area_ratio=round(bw * bh, 4)
                         ))
 
-        else:
+        elif self.backend == "onnxruntime" and self.model is not None and img_array is not None:
+            try:
+                import numpy as np
+                inp_name = self.model.get_inputs()[0].name
+                if hasattr(img_array, "shape"):
+                    try:
+                        import cv2
+                        resized = cv2.resize(img_array, (224, 224))
+                    except Exception:
+                        from PIL import Image
+                        u8_arr = img_array if img_array.dtype == np.uint8 else np.clip(img_array, 0, 255).astype(np.uint8)
+                        pil_img = Image.fromarray(u8_arr)
+                        resized = np.array(pil_img.resize((224, 224)))
+                    arr = resized.astype(np.float32) / 255.0
+                else:
+                    arr = np.zeros((224, 224, 3), dtype=np.float32)
+
+                mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+                std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+                arr = (arr - mean) / std
+                arr = np.transpose(arr, (2, 0, 1))
+                arr = np.expand_dims(arr, 0)
+
+                outputs = self.model.run(None, {inp_name: arr})
+                logits = outputs[0][0]
+                exp_logits = np.exp(logits - np.max(logits))
+                probs = exp_logits / np.sum(exp_logits)
+                top_cls_id = int(np.argmax(probs))
+                top_conf = float(probs[top_cls_id])
+                cls_name = DEFECT_CLASSES.get(top_cls_id, "scratches")
+
+                if top_cls_id != 6:
+                    xc, yc = 0.50, 0.50
+                    bw, bh = 0.35, 0.25
+                    boxes.append(DetectionBox(
+                        class_id=top_cls_id,
+                        class_name=cls_name,
+                        confidence=round(top_conf, 4),
+                        xc=xc,
+                        yc=yc,
+                        w=bw,
+                        h=bh,
+                        x1=int((xc - bw/2) * w),
+                        y1=int((yc - bh/2) * h),
+                        x2=int((xc + bw/2) * w),
+                        y2=int((yc + bh/2) * h),
+                        area_ratio=round(bw * bh, 4)
+                    ))
+            except Exception:
+                pass
+
+        if not boxes and (img_array is None or self.backend == "calibration_engine"):
             # Deterministic Edge Calibration Engine
             # Identifies defect signatures if present
             # Default sample detection for pipeline verification

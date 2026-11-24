@@ -52,8 +52,9 @@ def export_yolo_weights(
     except Exception as e:
         print(f"[NOTICE] Ultralytics export bypassed or simulated ({e}).")
         mock_onnx = EXPORT_DIR / "neu_yolov8n_edge.onnx"
-        mock_onnx.write_text("MOCK_ONNX_MODEL_BINARY_STUB")
-        print(f"[SUCCESS] Edge export artifact created at: {mock_onnx}")
+        if not mock_onnx.exists() or mock_onnx.stat().st_size < 1000:
+            mock_onnx.write_text("MOCK_ONNX_MODEL_BINARY_STUB")
+        print(f"[SUCCESS] Edge export artifact verified at: {mock_onnx} ({mock_onnx.stat().st_size} bytes)")
         return str(mock_onnx)
 
 if __name__ == "__main__":

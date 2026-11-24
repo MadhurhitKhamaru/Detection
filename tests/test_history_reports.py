@@ -10,8 +10,10 @@ import tempfile
 import os
 import json
 import csv
+import sys
 import io
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.database import QualiEdgeDatabase
 from backend.main import InspectionService
 
@@ -107,7 +109,12 @@ class TestHistoryAndReports(unittest.TestCase):
             self.db.save_inspection(r, boxes=boxes)
 
     def tearDown(self):
-        self.temp_dir.cleanup()
+        if hasattr(self, "db") and self.db:
+            self.db.close()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
 
     def test_list_inspections_filtering(self):
         """Verify multi-criteria filtering by defect type, severity, decision, and confidence."""

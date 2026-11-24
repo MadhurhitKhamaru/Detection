@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { analyzeImageForDefects } from '../utils/cameraProcessing';
+import { analyzeImageForDefects, mapBackendToDetectionResult } from '../utils/cameraProcessing';
+import { api } from '../services/api';
 import {
   Play,
   Pause,
@@ -339,13 +340,30 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleInspectLiveCanvas = () => {
+  const handleInspectLiveCanvas = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     setIsProcessingInspection(true);
+    const now = new Date();
+    const productId = streamSource === 'upload' && uploadedFileName
+      ? `UPLOAD-${uploadedFileName.replace(/\.[^/.]+$/, '').toUpperCase().slice(0, 8)}`
+      : `CAM-${now.getHours()}${now.getMinutes()}${now.getSeconds()}`;
+
     try {
-      const detection = analyzeImageForDefects(canvas);
-      const now = new Date();
+      const canvasB64 = canvas.toDataURL('image/jpeg', 0.85);
+      let detection;
+      let inspectionId = `INS-2026-${String(activeHistory.length + 1).padStart(3, '0')}`;
+      let inferMs = +(28 + Math.random() * 8).toFixed(1);
+
+      try {
+        const res = await api.runInspection(productId, canvasB64);
+        detection = mapBackendToDetectionResult(res, canvas.width, canvas.height);
+        if (res.inspection?.inspection_id) inspectionId = res.inspection.inspection_id;
+        if (res.inspection?.inference_ms) inferMs = Number(res.inspection.inference_ms);
+      } catch {
+        detection = analyzeImageForDefects(canvas);
+      }
+
       const hasDefect = detection.hasDefect;
       const defectType = detection.defectType;
       const decision = hasDefect
@@ -354,10 +372,8 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({
       const loc = detection.box.xc < 0.35 ? 'Drive Side (DS)' : detection.box.xc > 0.65 ? 'Operator Side (OS)' : 'Central Web';
 
       const newRecord: InspectionRecord = {
-        inspection_id: `INS-2026-${String(activeHistory.length + 1).padStart(3, '0')}`,
-        product_id: streamSource === 'upload' && uploadedFileName
-          ? `UPLOAD-${uploadedFileName.replace(/\.[^/.]+$/, '').toUpperCase().slice(0, 8)}`
-          : `CAM-${now.getHours()}${now.getMinutes()}${now.getSeconds()}`,
+        inspection_id: inspectionId,
+        product_id: productId,
         timestamp: now.toISOString(),
         defect_detected: hasDefect,
         defect_type: defectType,
@@ -366,7 +382,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({
         location: loc,
         decision: decision,
         recommendation: detection.recommendation,
-        inference_ms: +(28 + Math.random() * 8).toFixed(1),
+        inference_ms: inferMs,
         boxes: hasDefect
           ? [
               {

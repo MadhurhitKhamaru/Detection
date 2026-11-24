@@ -17,14 +17,17 @@ import {
   Play,
   RotateCcw,
   Sparkles,
-  Info
+  Info,
+  ChevronRight
 } from 'lucide-react';
 import {
   applyClaheFilter,
   analyzeImageForDefects,
   drawHudOverlay,
+  mapBackendToDetectionResult,
   DefectDetectionResult
 } from '../utils/cameraProcessing';
+import { api } from '../services/api';
 
 interface DefectTypeInfo {
   id: string;
@@ -46,7 +49,7 @@ export function CameraInspectionStation({
   neuDefects,
   onCommitInspection
 }: CameraInspectionStationProps) {
-  const [inspectionMode, setInspectionMode] = useState<'sample' | 'upload' | 'webcam'>('sample');
+  const [inspectionMode, setInspectionMode] = useState<'upload' | 'webcam' | 'sample'>('upload');
   const [sampleIndex, setSampleIndex] = useState<number>(0);
   const [claheEnabled, setClaheEnabled] = useState<boolean>(true);
   const [clipLimit, setClipLimit] = useState<number>(2.5);
@@ -76,6 +79,14 @@ export function CameraInspectionStation({
   const [activeResult, setActiveResult] = useState<DefectDetectionResult>(() =>
     analyzeImageForDefects(undefined, neuDefects?.[0]?.id || 'crazing')
   );
+  const activeResultRef = useRef<DefectDetectionResult>(activeResult);
+  useEffect(() => {
+    activeResultRef.current = activeResult;
+  }, [activeResult]);
+
+  const isInspectingWebcamRef = useRef<boolean>(false);
+  const lastWebcamInferTimeRef = useRef<number>(0);
+
   const [inspectionSuccessToast, setInspectionSuccessToast] = useState<string | null>(null);
 
   // Handle preset sample changes
@@ -196,20 +207,37 @@ export function CameraInspectionStation({
           }
         }
 
-        // 3. Run defect analysis & draw HUD
-        const currentResult = analyzeImageForDefects(rawCanvas);
-        setActiveResult(currentResult);
-
-        // Copy raw or clahe onto HUD canvas and overlay bounding boxes
+        // 3. Render HUD overlay with active detection state
         const hudCtx = hudCanvas.getContext('2d');
         if (hudCtx) {
           hudCtx.drawImage(claheEnabled ? claheCanvas : rawCanvas, 0, 0);
         }
-        drawHudOverlay(hudCanvas, currentResult, cameraFps);
+        drawHudOverlay(hudCanvas, activeResultRef.current, cameraFps);
+
+        // 4. Asynchronously run real fine-tuned YOLO model every 500ms
+        const now = performance.now();
+        if (now - lastWebcamInferTimeRef.current >= 500 && !isInspectingWebcamRef.current) {
+          lastWebcamInferTimeRef.current = now;
+          isInspectingWebcamRef.current = true;
+          try {
+            const frameB64 = rawCanvas.toDataURL('image/jpeg', 0.80);
+            api.runInspection('WEBCAM-FRAME', frameB64)
+              .then((res) => {
+                const mapped = mapBackendToDetectionResult(res, width, height);
+                activeResultRef.current = mapped;
+                setActiveResult(mapped);
+              })
+              .catch(() => {})
+              .finally(() => {
+                isInspectingWebcamRef.current = false;
+              });
+          } catch {
+            isInspectingWebcamRef.current = false;
+          }
+        }
 
         // Calculate live FPS
         frameCount++;
-        const now = performance.now();
         if (now - lastTime >= 1000) {
           setCameraFps(+( (frameCount * 1000) / (now - lastTime) ).toFixed(1));
           frameCount = 0;
@@ -336,7 +364,7 @@ export function CameraInspectionStation({
       setUploadedImageSrc(resultStr);
 
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const rawCanvas = rawCanvasRef.current;
         const claheCanvas = claheCanvasRef.current;
         const hudCanvas = hudCanvasRef.current;
@@ -365,14 +393,34 @@ export function CameraInspectionStation({
           }
         }
 
-        const detectResult = analyzeImageForDefects(rawCanvas);
-        setActiveResult(detectResult);
+        // Call live fine-tuned YOLOv8n edge model on uploaded file
+        const canvasB64 = rawCanvas.toDataURL('image/jpeg', 0.85);
+        try {
+          const res = await api.runInspection(`UPLOAD-${file.name.slice(0, 10).toUpperCase()}`, canvasB64);
+          const mapped = mapBackendToDetectionResult(res, width, height);
+          activeResultRef.current = mapped;
+          setActiveResult(mapped);
 
-        const hudCtx = hudCanvas.getContext('2d');
-        if (hudCtx) {
-          hudCtx.drawImage(claheEnabled ? claheCanvas : rawCanvas, 0, 0);
+          const hudCtx = hudCanvas.getContext('2d');
+          if (hudCtx) {
+            hudCtx.drawImage(claheEnabled ? claheCanvas : rawCanvas, 0, 0);
+          }
+          drawHudOverlay(hudCanvas, mapped, 30.0);
+
+          setInspectionSuccessToast(
+            `Model Inference: ${mapped.hasDefect ? `ALERT: DAMAGED SPECIMEN [${mapped.defectType.toUpperCase()}] -> REJECT` : 'PASS: NORMAL STEEL SPECIMEN -> ACCEPT'} [${(mapped.confidence * 100).toFixed(1)}%]`
+          );
+        } catch (err) {
+          console.warn('Backend inference failed, falling back:', err);
+          const detectResult = analyzeImageForDefects(rawCanvas);
+          activeResultRef.current = detectResult;
+          setActiveResult(detectResult);
+          const hudCtx = hudCanvas.getContext('2d');
+          if (hudCtx) {
+            hudCtx.drawImage(claheEnabled ? claheCanvas : rawCanvas, 0, 0);
+          }
+          drawHudOverlay(hudCanvas, detectResult, 30.0);
         }
-        drawHudOverlay(hudCanvas, detectResult, 30.0);
       };
       img.src = resultStr;
     };
@@ -408,10 +456,10 @@ export function CameraInspectionStation({
     drawHudOverlay(hudCanvas, currentResult, isWebcamActive ? cameraFps : 30.5);
   };
 
-  // Trigger manual inspection capture to history & SQLite
-  const handleCaptureAndInspect = () => {
+  // Trigger manual inspection capture to history & SQLite (via on-device REST API)
+  const handleCaptureAndInspect = async () => {
     const now = new Date();
-    const newId = `INS-LIVE-${Math.floor(1000 + Math.random() * 9000)}`;
+    const fallbackId = `INS-LIVE-${Math.floor(1000 + Math.random() * 9000)}`;
     const productSerial =
       inspectionMode === 'upload'
         ? `STEEL-UP-${uploadedFileName.substring(0, 6).toUpperCase() || 'SPECIMEN'}`
@@ -419,8 +467,8 @@ export function CameraInspectionStation({
         ? `STEEL-CAM-${now.getSeconds() * 12 + 100}`
         : `STEEL-${activeResult.defectType.substring(0, 2).toUpperCase()}-${Math.floor(200 + Math.random() * 800)}`;
 
-    const newRecord = {
-      inspection_id: newId,
+    const fallbackRecord = {
+      inspection_id: fallbackId,
       product_id: productSerial,
       timestamp: now.toISOString(),
       defect_detected: activeResult.hasDefect,
@@ -451,13 +499,26 @@ export function CameraInspectionStation({
       shift_log_summary: `${activeResult.hasDefect ? 'REJECT' : 'ACCEPT'}: ${activeResult.defectType.toUpperCase()} captured from ${inspectionMode.toUpperCase()} feed.`
     };
 
-    if (onCommitInspection) {
-      onCommitInspection(newRecord);
+    try {
+      // Call live Python edge backend with dual-engine inference
+      const canvasB64 = rawCanvasRef.current ? rawCanvasRef.current.toDataURL('image/jpeg', 0.85) : undefined;
+      const res = await api.runInspection(productSerial, canvasB64);
+      const recordToCommit = res.inspection || fallbackRecord;
+      if (onCommitInspection) {
+        onCommitInspection(recordToCommit);
+      }
+      setInspectionSuccessToast(
+        `Edge API Logged: ${recordToCommit.inspection_id} (${recordToCommit.decision} - ${recordToCommit.defect_type || 'Defect-free'}) in ${res.inspection?.inference_ms || 12}ms`
+      );
+    } catch (err) {
+      console.warn("Edge API inspection call failed, persisting locally:", err);
+      if (onCommitInspection) {
+        onCommitInspection(fallbackRecord);
+      }
+      setInspectionSuccessToast(
+        `Local Committed: ${fallbackId} (${fallbackRecord.decision} - ${activeResult.defectType.toUpperCase()})`
+      );
     }
-
-    setInspectionSuccessToast(
-      `Captured & Committed: ${newId} (${newRecord.decision} - ${activeResult.defectType.toUpperCase()})`
-    );
     setTimeout(() => setInspectionSuccessToast(null), 3500);
   };
 
@@ -477,22 +538,7 @@ export function CameraInspectionStation({
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400 uppercase font-mono font-bold">Input Source:</span>
           <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
-            {/* 1. Presets */}
-            <button
-              onClick={() => {
-                if (isWebcamActive) stopWebcam();
-                setInspectionMode('sample');
-              }}
-              className={`px-3 py-1.5 rounded-md font-medium transition ${
-                inspectionMode === 'sample'
-                  ? 'bg-emerald-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Steel Defect Presets
-            </button>
-
-            {/* 2. Upload Image */}
+            {/* 1. Upload Image */}
             <button
               onClick={() => {
                 if (isWebcamActive) stopWebcam();
@@ -508,12 +554,12 @@ export function CameraInspectionStation({
               Upload Image
             </button>
 
-            {/* 3. Webcam Live Feed */}
+            {/* 2. Webcam Live Feed */}
             <button
               onClick={() => {
                 if (isWebcamActive) {
                   stopWebcam();
-                  setInspectionMode('sample');
+                  setInspectionMode('upload');
                 } else {
                   setInspectionMode('webcam');
                   startWebcam();
@@ -529,6 +575,21 @@ export function CameraInspectionStation({
             >
               <Camera className="w-3.5 h-3.5" />
               {isWebcamActive ? 'Stop Webcam' : 'Webcam Live Feed'}
+            </button>
+
+            {/* 3. Steel Defect Presets */}
+            <button
+              onClick={() => {
+                if (isWebcamActive) stopWebcam();
+                setInspectionMode('sample');
+              }}
+              className={`px-3 py-1.5 rounded-md font-medium transition ${
+                inspectionMode === 'sample'
+                  ? 'bg-emerald-500 text-slate-950 font-bold'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Steel Defect Presets
             </button>
           </div>
         </div>
@@ -783,24 +844,36 @@ export function CameraInspectionStation({
         </div>
 
         {/* View 3: Industrial HUD Overlay */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div className={`bg-slate-900 border rounded-xl p-4 space-y-3 transition-colors ${
+          activeResult.hasDefect ? 'border-rose-500/40 bg-rose-950/10' : 'border-emerald-500/30'
+        }`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-white flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              3. Computer Vision HUD Overlay
+              {activeResult.hasDefect ? (
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              )}
+              {activeResult.hasDefect ? '3. CV HUD - DEFECT DETECTED' : '3. CV HUD - SPECIMEN PASS'}
             </span>
-            <span className="text-[10px] text-emerald-400 font-mono">
-              11.45 ms | 58.8 FPS
+            <span className={`text-[10px] font-mono font-bold ${activeResult.hasDefect ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {activeResult.hasDefect ? 'ALERT: REJECT' : '11.45 ms | PASS'}
             </span>
           </div>
 
-          <div className="relative aspect-square bg-slate-950 rounded-lg border border-emerald-500/30 overflow-hidden flex items-center justify-center">
+          <div className={`relative aspect-square bg-slate-950 rounded-lg border overflow-hidden flex items-center justify-center ${
+            activeResult.hasDefect ? 'border-rose-500/50 shadow-md shadow-rose-950/30' : 'border-emerald-500/30'
+          }`}>
             <canvas
               ref={hudCanvasRef}
               className="w-full h-full object-cover"
             />
-            <div className="absolute bottom-2 right-2 text-[10px] bg-slate-950/90 text-emerald-400 px-2 py-0.5 rounded font-mono border border-emerald-500/30 font-bold">
-              DECISION: {activeResult.hasDefect ? 'REJECT' : 'ACCEPT'}
+            <div className={`absolute bottom-2 right-2 text-[10px] px-2.5 py-1 rounded font-mono font-bold border shadow-md ${
+              activeResult.hasDefect
+                ? 'bg-rose-950/95 text-rose-300 border-rose-500/60 shadow-rose-950/60'
+                : 'bg-emerald-950/95 text-emerald-300 border-emerald-500/60 shadow-emerald-950/60'
+            }`}>
+              DECISION: {activeResult.hasDefect ? 'REJECT (DAMAGED)' : 'ACCEPT (GOOD)'}
             </div>
           </div>
         </div>
@@ -814,7 +887,9 @@ export function CameraInspectionStation({
             Real-Time Defect Coordinate &amp; Bounding Box Telemetry
           </h3>
           <span className="text-xs text-slate-400 font-mono">
-            Active Defect: <strong className="text-emerald-400">{activeResult.defectType.toUpperCase()}</strong> ({(activeResult.confidence * 100).toFixed(1)}%)
+            Active Defect: <strong className={activeResult.hasDefect ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+              {activeResult.hasDefect ? `${activeResult.defectType.toUpperCase()} [DAMAGED - REJECT]` : 'NORMAL [GOOD CONDITION - ACCEPT]'}
+            </strong> ({(activeResult.confidence * 100).toFixed(1)}%)
           </span>
         </div>
 

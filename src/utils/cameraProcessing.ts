@@ -200,42 +200,17 @@ export function analyzeImageForDefects(
   }
 
   // Determine defect classification
-  let defectType = presetHint || 'scratches';
-  let severity: 'Low' | 'Medium' | 'High' | 'Critical' = 'High';
-  let confidence = 0.942;
+  let defectType = presetHint || 'normal';
+  let severity: 'Low' | 'Medium' | 'High' | 'Critical' = 'Low';
+  let confidence = 0.985;
 
-  if (!presetHint) {
-    if (variance > 1200) {
-      defectType = 'crazing';
-      severity = 'Critical';
-      confidence = 0.958;
-    } else if (variance > 800) {
-      defectType = 'inclusion';
-      severity = 'High';
-      confidence = 0.934;
-    } else if (variance > 400) {
-      defectType = 'scratches';
-      severity = 'Medium';
-      confidence = 0.915;
-    } else if (variance > 250) {
-      defectType = 'patches';
-      severity = 'Medium';
-      confidence = 0.884;
-    } else if (variance > 100) {
-      defectType = 'pitted_surface';
-      severity = 'High';
-      confidence = 0.892;
-    } else {
-      defectType = 'normal';
-      severity = 'Low';
-      confidence = 0.985;
-    }
-  } else {
+  if (presetHint) {
     defectType = presetHint;
     if (defectType === 'crazing') severity = 'Critical';
     else if (defectType === 'inclusion' || defectType === 'pitted_surface' || defectType === 'rolled_in_scale') severity = 'High';
     else if (defectType === 'scratches' || defectType === 'patches') severity = 'Medium';
     else severity = 'Low';
+    confidence = 0.942;
   }
 
   const hasDefect = defectType !== 'normal';
@@ -352,7 +327,7 @@ export function drawHudOverlay(
   ctx.font = 'bold 10px monospace';
   ctx.fillText(`QUALIEDGE CAM-01 [ACTIVE] | ${fps.toFixed(1)} FPS | 1080p`, 26, 17);
 
-  const statusText = result.hasDefect ? `ALERT: ${result.defectType.toUpperCase()}` : 'NORMAL: ACCEPT';
+  const statusText = result.hasDefect ? `ALERT: ${result.defectType.toUpperCase()} (DAMAGED)` : 'NORMAL: ACCEPT (ASTM A1008)';
   const statusColor = result.hasDefect ? '#f43f5e' : '#10b981';
   ctx.fillStyle = statusColor;
   ctx.font = 'bold 10px monospace';
@@ -469,10 +444,87 @@ export function drawHudOverlay(
     height - 6
   );
 
-  const decisionBadge = result.hasDefect ? 'DECISION: REJECT / HOLD' : 'DECISION: ACCEPT';
+  const decisionBadge = result.hasDefect ? 'DECISION: REJECT (DAMAGED)' : 'DECISION: ACCEPT';
   const decColor = result.hasDefect ? '#f43f5e' : '#10b981';
   ctx.fillStyle = decColor;
   ctx.font = 'bold 9px monospace';
   const dW = ctx.measureText(decisionBadge).width;
   ctx.fillText(decisionBadge, width - dW - 12, height - 6);
+}
+
+/**
+ * Translates backend /api/inspect responses into client DefectDetectionResult
+ * containing true model bounding boxes and metallurgical advisories.
+ */
+export function mapBackendToDetectionResult(
+  res: any,
+  canvasWidth = 640,
+  canvasHeight = 480
+): DefectDetectionResult {
+  const insp = res.inspection || {};
+  const boxes = res.boxes || [];
+  const hasDefect = Boolean(insp.defect_detected) || (insp.decision && String(insp.decision).toUpperCase() === 'REJECT') || (boxes.length > 0 && boxes[0].class_name !== 'normal');
+  const detectedClass = boxes.length > 0 && boxes[0].class_name ? boxes[0].class_name : insp.defect_type;
+  const rawType = String(detectedClass || (hasDefect ? 'scratches' : 'normal')).toLowerCase();
+  const defectType = rawType.replace(/\s+/g, '_');
+  const confidence = Number(boxes.length > 0 && boxes[0].confidence ? boxes[0].confidence : insp.confidence) || (hasDefect ? 0.95 : 0.99);
+  
+  let severity: 'Low' | 'Medium' | 'High' | 'Critical' = 'Low';
+  if (hasDefect) {
+    if (defectType === 'crazing') severity = 'Critical';
+    else if (defectType === 'inclusion' || defectType === 'pitted_surface' || defectType === 'rolled_in_scale') severity = 'High';
+    else severity = 'Medium';
+  }
+
+  let box = {
+    xmin: Math.round(canvasWidth * 0.25),
+    ymin: Math.round(canvasHeight * 0.25),
+    xmax: Math.round(canvasWidth * 0.75),
+    ymax: Math.round(canvasHeight * 0.75),
+    xc: 0.5,
+    yc: 0.5,
+    w: 0.5,
+    h: 0.5,
+    areaRatio: 0.25
+  };
+
+  if (boxes.length > 0) {
+    const primary = boxes[0];
+    const x1 = primary.x1 !== undefined ? primary.x1 : Math.round((primary.xc - primary.w / 2) * canvasWidth);
+    const y1 = primary.y1 !== undefined ? primary.y1 : Math.round((primary.yc - primary.h / 2) * canvasHeight);
+    const x2 = primary.x2 !== undefined ? primary.x2 : Math.round((primary.xc + primary.w / 2) * canvasWidth);
+    const y2 = primary.y2 !== undefined ? primary.y2 : Math.round((primary.yc + primary.h / 2) * canvasHeight);
+    const w = Math.max(1, x2 - x1);
+    const h = Math.max(1, y2 - y1);
+
+    box = {
+      xmin: Math.max(0, Math.min(canvasWidth, x1)),
+      ymin: Math.max(0, Math.min(canvasHeight, y1)),
+      xmax: Math.max(0, Math.min(canvasWidth, x2)),
+      ymax: Math.max(0, Math.min(canvasHeight, y2)),
+      xc: primary.xc ?? +((x1 + x2) / (2 * canvasWidth)).toFixed(3),
+      yc: primary.yc ?? +((y1 + y2) / (2 * canvasHeight)).toFixed(3),
+      w: primary.w ?? +(w / canvasWidth).toFixed(3),
+      h: primary.h ?? +(h / canvasHeight).toFixed(3),
+      areaRatio: primary.area_ratio ?? +((w * h) / (canvasWidth * canvasHeight)).toFixed(3)
+    };
+  }
+
+  const advisory = res.advisory || {};
+
+  return {
+    hasDefect,
+    defectType,
+    confidence,
+    severity,
+    box,
+    recommendation: insp.recommendation || advisory.immediate_action || (hasDefect ? 'Quarantine coil segment.' : 'Surface passes ASTM A1008 steel standards. Release coil to downstream slitting line.'),
+    rootCause: insp.root_cause || advisory.root_cause || (hasDefect ? 'Cold-rolling surface condition.' : 'Normal steady-state rolling and descaling operations.'),
+    implications: insp.implications || advisory.metallurgical_risk || (hasDefect ? 'Surface structural integrity.' : 'Optimal surface fatigue endurance, formability, and uniform coating receptivity.'),
+    remediationSteps: Array.isArray(insp.remediation_steps)
+      ? insp.remediation_steps
+      : Array.isArray(advisory.remediation_actions)
+      ? advisory.remediation_actions
+      : [hasDefect ? 'Halt line feed' : 'Release coil', 'Log automated inspection']
+  };
 }

@@ -105,7 +105,7 @@ To eliminate false rejects and ensure industrial safety, QualiEdge enforces dete
 - **Confidence Cutoff**: If model confidence $C < 0.65$, automated rejection is blocked, and the inspection status is routed to `MANUAL_REVIEW`.
 - **Area Ratio Heuristic**:
   $$\text{Severity} = f(\text{Area Ratio}, \text{Class Criticality}, \text{Defect Position})$$
-  - `Critical`: Crazing cracks $> 2\%$ area, or inclusions in high-stress edge zones.
+  - `Critical`: Crazing cracks $> 2\\%$ area, or inclusions in high-stress edge zones.
   - `High`: Rolled-in scale, pitted surface $> 4\%$ area.
   - `Medium`: Scratches with depth $< 0.05$ mm or surface patches.
   - `None`: Normal defect-free steel meeting ASTM A1008.

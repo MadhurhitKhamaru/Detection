@@ -35,10 +35,15 @@ def generate_sample_dataset():
     try:
         import numpy as np
         import cv2
-    except ImportError:
-        print("[WARN] OpenCV or NumPy not installed. Creating plain file stubs.")
+    except Exception:
         np = None
         cv2 = None
+
+    try:
+        from PIL import Image, ImageDraw
+    except Exception:
+        Image = None
+        ImageDraw = None
 
     for class_id, class_name in enumerate(CLASSES):
         for i in range(1, 11): # 10 samples per class for offline sanity check
@@ -74,6 +79,24 @@ def generate_sample_dataset():
                     cv2.line(img, (20, 40), (180, 160), color=210, thickness=2)
                 
                 cv2.imwrite(str(img_path), img)
+            elif Image is not None:
+                img = Image.new("L", (200, 200), color=128)
+                if ImageDraw is not None:
+                    draw = ImageDraw.Draw(img)
+                    if class_name == "crazing":
+                        draw.line([(30, 40), (80, 90), (120, 110)], fill=40, width=2)
+                    elif class_name == "inclusion":
+                        draw.ellipse([(60, 60), (90, 90)], fill=30)
+                    elif class_name == "patches":
+                        draw.rectangle([(50, 50), (130, 110)], fill=85)
+                    elif class_name == "pitted_surface":
+                        for ox, oy in [(40, 50), (70, 90), (110, 60), (130, 140)]:
+                            draw.ellipse([(ox, oy), (ox+6, oy+6)], fill=20)
+                    elif class_name == "rolled_in_scale":
+                        draw.ellipse([(60, 80), (140, 120)], outline=45, width=3)
+                    elif class_name == "scratches":
+                        draw.line([(20, 40), (180, 160)], fill=220, width=3)
+                img.save(str(img_path))
             else:
                 img_path.touch()
 

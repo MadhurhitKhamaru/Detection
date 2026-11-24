@@ -36,8 +36,8 @@ from backend.technical_report import get_report_service, TechnicalReportService
 _db = QualiEdgeDatabase()
 _db.seed_demo_data()
 
-_detector = SteelDefectDetector()
-_severity_engine = SeverityAssessmentEngine()
+_detector = SteelDefectDetector(conf_thresh=0.25)
+_severity_engine = SeverityAssessmentEngine(confidence_cutoff=0.25)
 _advisory_runner = LlamaExecuTorchRunner()
 _camera_stream = IndustrialCameraStream()
 _profiler = get_profiler()
@@ -62,7 +62,11 @@ class InspectionService:
     """
 
     @staticmethod
-    def run_inspection(product_id: Optional[str] = None, image_bytes: Optional[bytes] = None) -> Dict[str, Any]:
+    def run_inspection(
+        product_id: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        image_base64: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Executes a complete inspection cycle.
         """
@@ -71,11 +75,44 @@ class InspectionService:
 
         start_time = time.time()
 
-        # 1. Acquire Frame (from camera stream or synthetic simulation)
-        frame = _camera_stream.read()
+        frame = None
+        if image_base64:
+            try:
+                import base64
+                import io
+                import numpy as np
+                from PIL import Image
+                raw_b64 = image_base64
+                if "," in raw_b64:
+                    raw_b64 = raw_b64.split(",", 1)[1]
+                img_data = base64.b64decode(raw_b64)
+                pil_img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                frame = np.array(pil_img)
+            except Exception as e:
+                print(f"[WARN] Failed to decode image_base64: {e}")
+                frame = None
+        elif image_bytes:
+            try:
+                import io
+                import numpy as np
+                from PIL import Image
+                pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+                frame = np.array(pil_img)
+            except Exception as e:
+                print(f"[WARN] Failed to decode image_bytes: {e}")
+                frame = None
+
         if frame is None:
-            # Generate synthetic test frame
-            frame = _camera_stream._generate_synthetic_steel_frame()
+            # 1. Acquire Frame (from camera stream or synthetic simulation)
+            frame_ret = _camera_stream.read() if hasattr(_camera_stream, "read") else None
+            if isinstance(frame_ret, tuple):
+                ret, frame = frame_ret
+                if not ret or frame is None:
+                    frame = _camera_stream._generate_synthetic_steel_frame()
+            elif frame_ret is not None:
+                frame = frame_ret
+            else:
+                frame = _camera_stream._generate_synthetic_steel_frame()
 
         # 2. Vision Inference (YOLO / HailoRT)
         detection_result = _detector.detect(frame)
@@ -163,6 +200,66 @@ class InspectionService:
     @staticmethod
     def get_inspection(inspection_id: str) -> Optional[Dict[str, Any]]:
         return _db.get_inspection(inspection_id)
+
+    @staticmethod
+    def get_sample_specimens() -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": "crazing-specimen",
+                "name": "Steel Coil Specimen: Radial Thermal Crazing",
+                "filename": "specimen_crazing_190228.png",
+                "url": "/QualiEdge/sample_specimens/specimen_crazing_190228.png",
+                "defect_type": "Crazing",
+                "ground_truth": "Crazing",
+                "expected_severity": "Critical",
+                "expected_decision": "REJECT",
+                "description": "User coil sample exhibiting severe radial micro-crack network radiating from center."
+            },
+            {
+                "id": "scratches-specimen",
+                "name": "Steel Strip Specimen: Longitudinal Mechanical Scratches",
+                "filename": "specimen_scratches_190302.png",
+                "url": "/QualiEdge/sample_specimens/specimen_scratches_190302.png",
+                "defect_type": "Scratches",
+                "ground_truth": "Scratches",
+                "expected_severity": "High",
+                "expected_decision": "REJECT",
+                "description": "User coil sample exhibiting deep diagonal mechanical scratch gouges across the plate."
+            },
+            {
+                "id": "normal-specimen-1",
+                "name": "Steel Strip Specimen: Defect-Free Brushed Surface (#1)",
+                "filename": "specimen_normal_190321.png",
+                "url": "/QualiEdge/sample_specimens/specimen_normal_190321.png",
+                "defect_type": "Normal",
+                "ground_truth": "Normal",
+                "expected_severity": "None",
+                "expected_decision": "ACCEPT",
+                "description": "User coil sample with clean uniform brushed steel surface meeting ASTM A1008."
+            },
+            {
+                "id": "normal-specimen-2",
+                "name": "Steel Strip Specimen: Defect-Free Matte Surface (#2)",
+                "filename": "specimen_normal_190930.png",
+                "url": "/QualiEdge/sample_specimens/specimen_normal_190930.png",
+                "defect_type": "Normal",
+                "ground_truth": "Normal",
+                "expected_severity": "None",
+                "expected_decision": "ACCEPT",
+                "description": "User test plate with uniform matte finish, verified defect-free."
+            },
+            {
+                "id": "normal-specimen-3",
+                "name": "Steel Strip Specimen: Wide Coil Strip Surface (#3)",
+                "filename": "specimen_normal_191702.png",
+                "url": "/QualiEdge/sample_specimens/specimen_normal_191702.png",
+                "defect_type": "Normal",
+                "ground_truth": "Normal",
+                "expected_severity": "None",
+                "expected_decision": "ACCEPT",
+                "description": "User production coil strip with defect-free cold-rolled texture."
+            }
+        ]
 
     @staticmethod
     def get_shift_report(shift_name: str = "Current Shift", start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
@@ -370,6 +467,8 @@ class InspectionService:
                 return 200, {"csv": csv_str, "format": "text/csv", "filename": "qualiedge_inspections.csv"}
             elif path == "/api/db/maintenance":
                 return 200, InspectionService.get_db_maintenance()
+            elif path == "/api/specimens":
+                return 200, InspectionService.get_sample_specimens()
             elif path.startswith("/api/inspection/"):
                 inspection_id = path.split("/api/inspection/")[1]
                 rec = InspectionService.get_inspection(inspection_id)
@@ -406,7 +505,8 @@ class InspectionService:
         elif method == "POST":
             if path == "/api/inspect":
                 product_id = body.get("product_id")
-                return 200, InspectionService.run_inspection(product_id=product_id)
+                image_base64 = body.get("image_base64")
+                return 200, InspectionService.run_inspection(product_id=product_id, image_base64=image_base64)
             elif path == "/api/operator/override":
                 inspection_id = body.get("inspection_id")
                 if not inspection_id:
@@ -482,6 +582,10 @@ if HAS_FASTAPI:
     ):
         return InspectionService.get_history(limit, offset, product_id, defect_type, severity, decision)
 
+    @app.get("/api/specimens")
+    def specimens_endpoint():
+        return InspectionService.get_sample_specimens()
+
     @app.get("/api/inspection/{inspection_id}")
     def get_single_inspection(inspection_id: str):
         rec = InspectionService.get_inspection(inspection_id)
@@ -496,12 +600,18 @@ if HAS_FASTAPI:
         except Exception:
             body = {}
         product_id = body.get("product_id")
-        return InspectionService.run_inspection(product_id=product_id)
+        image_base64 = body.get("image_base64")
+        return InspectionService.run_inspection(product_id=product_id, image_base64=image_base64)
 
     @app.post("/api/operator/override")
     async def operator_override_endpoint(request: Request):
-        body = await request.json()
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
         inspection_id = body.get("inspection_id")
+        if not inspection_id:
+            raise HTTPException(status_code=400, detail="Missing required field: inspection_id")
         operator_id = body.get("operator_id", "OPERATOR-DEFAULT")
         action = body.get("action", "VERIFIED")
         notes = body.get("notes", "")
@@ -676,6 +786,15 @@ class QualiEdgeHTTPHandler(BaseHTTPRequestHandler):
 
 def start_edge_server(port: int = 8000, host: str = "0.0.0.0"):
     """Starts the edge HTTP server."""
+    if HAS_FASTAPI and app is not None:
+        try:
+            import uvicorn
+            print(f"[SUCCESS] QualiEdge FastAPI ASGI server running on http://{host}:{port}")
+            uvicorn.run(app, host=host, port=port, log_level="info")
+            return
+        except Exception as e:
+            print(f"[WARN] Uvicorn startup failed ({e}), falling back to built-in HTTP engine...")
+
     server_address = (host, port)
     httpd = HTTPServer(server_address, QualiEdgeHTTPHandler)
     print(f"[SUCCESS] QualiEdge Edge REST API running on http://{host}:{port}")

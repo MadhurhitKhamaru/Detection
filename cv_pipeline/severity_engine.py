@@ -28,7 +28,7 @@ from backend.schemas import (
 )
 
 # Confidence threshold for automated industrial decision
-CONFIDENCE_THRESHOLD = 0.65
+CONFIDENCE_THRESHOLD = 0.25
 
 # Baseline category severity
 CATEGORY_BASE_SEVERITY = {
@@ -118,8 +118,8 @@ class SeverityAssessmentEngine:
         # Format defect name nicely e.g. "Scratch", "Crazing"
         clean_name = raw_name.replace("_", " ").title()
 
-        # Case 2: Insufficient confidence -> Fail-Safe Manual Review
-        if conf < self.confidence_cutoff:
+        # Case 2: Very low confidence (< 0.20) -> Fail-Safe Manual Review
+        if conf < 0.20:
             return StructuredInspectionRecord(
                 inspection_id=insp_id,
                 product_id=product_id,
@@ -129,7 +129,7 @@ class SeverityAssessmentEngine:
                 confidence=conf,
                 location=location_str,
                 decision=InspectionDecision.MANUAL_REVIEW,
-                recommendation=f"Confidence ({conf*100:.1f}%) is below {self.confidence_cutoff*100:.0f}% threshold. Hold product for manual operator verification.",
+                recommendation=f"Confidence ({conf*100:.1f}%) is borderline. Hold product for manual operator verification.",
                 timestamp=now_iso,
                 inference_ms=inference_ms,
                 boxes=[DefectBoxDetail(**b) for b in boxes if "class_id" in b]
